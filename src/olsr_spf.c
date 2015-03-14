@@ -63,6 +63,7 @@
 #include "hna_set.h"
 #include "common/list.h"
 #include "common/avl.h"
+#include "common/heap.h"
 #include "olsr_spf.h"
 #include "net_olsr.h"
 #include "lq_plugin.h"
@@ -71,69 +72,26 @@
 struct timer_entry *spf_backoff_timer = NULL;
 
 /*
- * avl_comp_etx
+ * olsr_spf_add_cand_heap
  *
- * compare two etx metrics.
- * return 0 if there is an exact match and
- * -1 / +1 depending on being smaller or bigger.
- * note that this results in the most optimal code
- * after compiler optimization.
- */
-static int
-avl_comp_etx(const void *etx1, const void *etx2)
-{
-  if (*(const olsr_linkcost *)etx1 < *(const olsr_linkcost *)etx2) {
-    return -1;
-  }
-
-  if (*(const olsr_linkcost *)etx1 > *(const olsr_linkcost *)etx2) {
-    return +1;
-  }
-
-  return 0;
-}
-
-/*
- * olsr_spf_add_cand_tree
- *
- * Key an existing vertex to a candidate tree.
+ * Key an existing vertex to a candidate heap.
  */
 static void
-olsr_spf_add_cand_tree(struct avl_tree *tree, struct tc_entry *tc)
+olsr_spf_add_cand_heap(struct heap *root, struct tc_entry *tc)
 {
 #if !defined(NODEBUG) && defined(DEBUG)
   struct ipaddr_str buf;
   struct lqtextbuffer lqbuffer;
 #endif /* !defined(NODEBUG) && defined(DEBUG) */
-  tc->cand_tree_node.key = &tc->path_cost;
+  tc->cand_heap_node.key = tc->path_cost;
+  tc->cand_heap_node.parent = tc->cand_heap_node.left = tc->cand_heap_node.right = NULL;
 
 #ifdef DEBUG
   OLSR_PRINTF(2, "SPF: insert candidate %s, cost %s\n", olsr_ip_to_string(&buf, &tc->addr),
               get_linkcost_text(tc->path_cost, false, &lqbuffer));
 #endif /* DEBUG */
 
-  avl_insert(tree, &tc->cand_tree_node, AVL_DUP);
-}
-
-/*
- * olsr_spf_del_cand_tree
- *
- * Unkey an existing vertex from a candidate tree.
- */
-static void
-olsr_spf_del_cand_tree(struct avl_tree *tree, struct tc_entry *tc)
-{
-
-#ifdef DEBUG
-#ifndef NODEBUG
-  struct ipaddr_str buf;
-  struct lqtextbuffer lqbuffer;
-#endif /* NODEBUG */
-  OLSR_PRINTF(2, "SPF: delete candidate %s, cost %s\n", olsr_ip_to_string(&buf, &tc->addr),
-              get_linkcost_text(tc->path_cost, false, &lqbuffer));
-#endif /* DEBUG */
-
-  avl_delete(tree, &tc->cand_tree_node);
+  heap_insert(root, &tc->cand_heap_node);
 }
 
 /*
@@ -150,10 +108,7 @@ olsr_spf_add_path_list(struct list_node *head, int *path_count, struct tc_entry 
 #endif /* !defined(NODEBUG) && defined(DEBUG) */
 
 #ifdef DEBUG
-  OLSR_PRINTF(2, "SPF: append path %s, cost %s, via %s\n", olsr_ip_to_string(&pathbuf, &tc->addr),
-              get_linkcost_text(tc->path_cost, false, &lqbuffer), tc->next_hop ? olsr_ip_to_string(&nbuf,
-                                                                                                   &tc->next_hop->
-                                                                                                   neighbor_iface_addr) : "-");
+  OLSR_PRINTF(2, "SPF: append path %s, cost %s, via %s\n", olsr_ip_to_string(&pathbuf, &tc->addr), get_linkcost_text(tc->path_cost, false, &lqbuffer), tc->next_hop ? olsr_ip_to_string(&nbuf,&tc->next_hop->neighbor_iface_addr) : "-");
 #endif /* DEBUG */
 
   list_add_before(head, &tc->path_list_node);
@@ -166,22 +121,45 @@ olsr_spf_add_path_list(struct list_node *head, int *path_count, struct tc_entry 
  * return the node with the minimum pathcost.
  */
 static struct tc_entry *
-olsr_spf_extract_best(struct avl_tree *tree)
+olsr_spf_extract_best(struct heap *root)
 {
-  struct avl_node *node = avl_walk_first(tree);
+  struct heap_node *node = heap_extract_min(root);
+  return (node ? cand_heap2tc(node) : NULL);
+}
 
-  return (node ? cand_tree2tc(node) : NULL);
+/*
+ * olsr_spf_decrease_key
+ *
+ * update the node with the new pathcost.
+ */
+
+static void
+olsr_spf_decrease_key(struct heap *root, struct tc_entry *tc, olsr_linkcost new_cost)
+{
+#if !defined(NODEBUG) && defined(DEBUG)
+  struct ipaddr_str buf;
+  struct lqtextbuffer lqbuffer;
+#endif /* !defined(NODEBUG) && defined(DEBUG) */
+
+#ifdef DEBUG
+  OLSR_PRINTF(2, "SPF: update candidate %s with old cost %s to the new cost %s\n", olsr_ip_to_string(&buf, &tc->addr),
+              get_linkcost_text(tc->path_cost, false, &lqbuffer), get_linkcost_text(new_cost, false, &lqbuffer));
+#endif /* DEBUG */
+
+  tc->cand_heap_node.key = new_cost;
+
+  heap_decrease_key(root, &tc->cand_heap_node);
 }
 
 /*
  * olsr_spf_relax
  *
  * Explore all edges of a node and add the node
- * to the candidate tree if the if the aggregate
+ * to the candidate heap if the if the aggregate
  * path cost is better.
  */
 static void
-olsr_spf_relax(struct avl_tree *cand_tree, struct tc_entry *tc)
+olsr_spf_relax(struct heap *root, struct tc_entry *tc)
 {
   struct avl_node *edge_node;
   olsr_linkcost new_cost;
@@ -241,14 +219,16 @@ olsr_spf_relax(struct avl_tree *cand_tree, struct tc_entry *tc)
 
     if (new_cost < new_tc->path_cost) {
 
-      /* if this node has been on the candidate tree delete it */
-      if (new_tc->path_cost < ROUTE_COST_BROKEN) {
-        olsr_spf_del_cand_tree(cand_tree, new_tc);
-      }
 
-      /* re-insert on candidate tree with the better metric */
-      new_tc->path_cost = new_cost;
-      olsr_spf_add_cand_tree(cand_tree, new_tc);
+      /* if this node has been on the candidate heap update it */
+      if (new_tc->path_cost < ROUTE_COST_BROKEN) {
+          olsr_spf_decrease_key(root, new_tc, new_cost);
+      }
+      else{
+          /* else insert it */
+          new_tc->path_cost = new_cost;
+          olsr_spf_add_cand_heap(root, new_tc);
+      }
 
       /* pull-up the next-hop and bump the hop count */
       if (tc->next_hop) {
@@ -280,21 +260,20 @@ olsr_spf_relax(struct avl_tree *cand_tree, struct tc_entry *tc)
  * on the candidate tree.
  */
 static void
-olsr_spf_run_full(struct avl_tree *cand_tree, struct list_node *path_list, int *path_count)
+olsr_spf_run_full(struct heap *root, struct list_node *path_list, int *path_count)
 {
   struct tc_entry *tc;
 
   *path_count = 0;
 
-  while ((tc = olsr_spf_extract_best(cand_tree))) {
+  while ((tc = olsr_spf_extract_best(root))) {
 
-    olsr_spf_relax(cand_tree, tc);
+    olsr_spf_relax(root, tc);
 
     /*
      * move the best path from the candidate tree
      * to the path list.
      */
-    olsr_spf_del_cand_tree(cand_tree, tc);
     olsr_spf_add_path_list(path_list, path_count, tc);
   }
 }
@@ -314,7 +293,7 @@ olsr_calculate_routing_table(bool force)
 #ifdef SPF_PROFILING
   struct timeval t1, t2, t3, t4, t5, spf_init, spf_run, route, kernel, total;
 #endif /* SPF_PROFILING */
-  struct avl_tree cand_tree;
+  struct heap root;
   struct avl_node *rtp_tree_node;
   struct list_node path_list;          /* head of the path_list */
   struct tc_entry *tc;
@@ -341,7 +320,7 @@ olsr_calculate_routing_table(bool force)
   /*
    * Prepare the candidate tree and result list.
    */
-  avl_init(&cand_tree, avl_comp_etx);
+  heap_init(&root);
   list_head_init(&path_list);
   olsr_bump_routingtree_version();
 
@@ -374,7 +353,7 @@ olsr_calculate_routing_table(bool force)
    * zero ourselves and add us to the candidate tree.
    */
   tc_myself->path_cost = ZERO_ROUTE_COST;
-  olsr_spf_add_cand_tree(&cand_tree, tc_myself);
+  olsr_spf_add_cand_heap(&root, tc_myself);
 
   /*
    * add edges to and from our neighbours.
@@ -436,7 +415,7 @@ olsr_calculate_routing_table(bool force)
   /*
    * Run the SPF calculation.
    */
-  olsr_spf_run_full(&cand_tree, &path_list, &path_count);
+  olsr_spf_run_full(&root, &path_list, &path_count);
 
   OLSR_PRINTF(2, "\n--- %s ------------------------------------------------- DIJKSTRA\n\n", olsr_wallclock_string());
 
