@@ -34,8 +34,6 @@ struct heap_node* heap_find_last_node(struct heap *root);
 
 struct heap_node *heap_extract_min(struct heap *root);
 
-void heap_print(struct heap_node *root);
-
 #define HEAPNODE2STRUCT(funcname, structname, heapnodename) \
 static inline structname * funcname (struct heap_node *ptr)\
 {\
