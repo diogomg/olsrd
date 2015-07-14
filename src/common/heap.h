@@ -3,35 +3,56 @@
 
 #include "olsr_types.h"
 
+/**
+ * Element included into a heap.
+ */
 struct heap_node{
+    /**
+     * node's key based on the link cost type.
+     */
     olsr_linkcost key;
-    int vertex;
-    struct heap_node *parent, *left, *right;
+
+    /**
+     * Pointer to parent node in the heap, NULL if root node.
+     */
+    struct heap_node *parent;
+
+    /**
+     * Pointer to left child, NULL if there isn't.
+     */
+    struct heap_node *left;
+
+    /**
+     * Pointer to right child, NULL if there isn't.
+     */
+    struct heap_node *right;
 };
 
+/**
+ * Manager struct of the heap.
+ * One of them is necessary for each heap.
+ */
 struct heap{
+    /**
+     * Number of nodes in the heap.
+     */
     unsigned int count;
-    struct heap_node *root_node, *last_node;
+
+    /**
+     * Pointer to the root node of the heap, NULL if heap is empty.
+     */
+    struct heap_node *root_node;
+
+    /**
+     * Pointer to the rightest node of the lowest level in the heap,
+     * NULL if heap is empty.
+     */
+    struct heap_node *last_node;
 };
 
 void heap_init(struct heap *root);
-
-unsigned int heap_perfect_log2 (unsigned int number);
-
-struct heap_node* heap_find_parent_insert_node(struct heap *root);
-
 void heap_decrease_key(struct heap *root, struct heap_node *node);
-
 void heap_insert(struct heap *root, struct heap_node *node);
-
-void heap_swap_left(struct heap *root, struct heap_node *node);
-
-void heap_swap_right(struct heap *root, struct heap_node *node);
-
-void heap_increse_key(struct heap *root, struct heap_node *node);
-
-struct heap_node* heap_find_last_node(struct heap *root);
-
 struct heap_node *heap_extract_min(struct heap *root);
 
 #define HEAPNODE2STRUCT(funcname, structname, heapnodename) \
