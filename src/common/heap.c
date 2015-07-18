@@ -16,9 +16,20 @@ static struct heap_node* heap_find_last_node(struct heap *root);
  * @param root pointer to binary heap
  */
 void
-heap_init(struct heap *root){
+heap_init(struct heap *root)
+{
     root->count = 0;
     root->root_node = root->last_node = NULL;
+}
+
+/**
+ * Initialize a heap node
+ * @param node pointer to the heap node
+ */
+void
+heap_init_node(struct heap_node *node)
+{
+    node->parent = node->left = node->right = NULL;
 }
 
 /**
@@ -27,7 +38,8 @@ heap_init(struct heap *root){
  * @return the difference between the binary heap's size and a full binary heap with the same height.
  */
 static unsigned int
-heap_perfect_log2 (unsigned int number) {
+heap_perfect_log2 (unsigned int number)
+{
     unsigned int log = 0, pow=1, original_number=number, i;
     while (number >>= 1) ++log;
     for (i = 0; i < log; i++) {
@@ -43,7 +55,8 @@ heap_perfect_log2 (unsigned int number) {
  */
 
 static struct heap_node*
-heap_find_parent_insert_node(struct heap *root){
+heap_find_parent_insert_node(struct heap *root)
+{
     struct heap_node *aux = root->last_node;
     unsigned int N = root->count+1;
     if ( !heap_perfect_log2(N) ){
@@ -74,7 +87,8 @@ heap_find_parent_insert_node(struct heap *root){
  * @param node pointer to the node changed
  */
 void
-heap_decrease_key(struct heap *root, struct heap_node *node){
+heap_decrease_key(struct heap *root, struct heap_node *node)
+{
     struct heap_node *parent = node->parent;
     struct heap_node *left = node->left;
     struct heap_node *right = node->right;
@@ -134,9 +148,11 @@ heap_decrease_key(struct heap *root, struct heap_node *node){
  * @param node pointer to node that will be inserted
  */
 void
-heap_insert(struct heap *root, struct heap_node *node){
+heap_insert(struct heap *root, struct heap_node *node)
+{
     struct heap_node *parent = NULL;
-    node->parent = node->left = node->right = NULL;
+
+    heap_init_node(node);
 
     if(!root->count){
         root->root_node = root->last_node = node;
@@ -163,7 +179,8 @@ heap_insert(struct heap *root, struct heap_node *node){
  * @param node pointer to node that will be swapped
  */
 static void
-heap_swap_left(struct heap *root, struct heap_node *node){
+heap_swap_left(struct heap *root, struct heap_node *node)
+{
     struct heap_node *parent = node->parent;
     struct heap_node *left = node->left;
     struct heap_node *right = node->right;
@@ -199,7 +216,8 @@ heap_swap_left(struct heap *root, struct heap_node *node){
  * @param node pointer to node that will be swapped
  */
 static void
-heap_swap_right(struct heap *root, struct heap_node *node){
+heap_swap_right(struct heap *root, struct heap_node *node)
+{
     struct heap_node *parent = node->parent;
     struct heap_node *left = node->left;
     struct heap_node *right = node->right;
@@ -235,7 +253,8 @@ heap_swap_right(struct heap *root, struct heap_node *node){
  * @param node pointer to the node changed
  */
 static void
-heap_increse_key(struct heap *root, struct heap_node *node){
+heap_increse_key(struct heap *root, struct heap_node *node)
+{
     struct heap_node *left = node->left;
     struct heap_node *right = node->right;
     if(left && (node->key > left->key)){
@@ -261,7 +280,8 @@ heap_increse_key(struct heap *root, struct heap_node *node){
  * @return the pointer to last node
  */
 static struct heap_node*
-heap_find_last_node(struct heap *root){
+heap_find_last_node(struct heap *root)
+{
     struct heap_node *aux = root->last_node;
     unsigned int N = root->count+1;
     if ( !heap_perfect_log2(N) ){
@@ -286,7 +306,8 @@ heap_find_last_node(struct heap *root){
  * @return the pointer to best node
  */
 struct heap_node *
-heap_extract_min(struct heap *root){
+heap_extract_min(struct heap *root)
+{
     struct heap_node *min_node = root->root_node;
     struct heap_node *new_min = root->last_node;
     if(!min_node)
