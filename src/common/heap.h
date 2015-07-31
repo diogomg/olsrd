@@ -93,11 +93,15 @@ heap_is_empty(struct heap *root)
  * @return true if node is currently in the heap, false otherwise
  */
 static INLINE bool
-heap_is_node_added(struct heap_node *node)
+heap_is_node_added(struct heap *root, struct heap_node *node)
 {
-    if(!node)
-        return false;
-    return !(node->parent || node->left || node->right);
+    if(node){
+        if(node->parent || node->left || node->right)
+            return true;
+        if(node == heap_get_root_node(root))
+            return true;
+    }
+    return false;
 }
 
 #define HEAPNODE2STRUCT(funcname, structname, heapnodename) \
