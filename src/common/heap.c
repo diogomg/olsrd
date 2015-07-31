@@ -40,12 +40,9 @@ heap_init_node(struct heap_node *node)
 static unsigned int
 heap_perfect_log2 (unsigned int number)
 {
-    unsigned int log = 0, pow=1, original_number=number, i;
+    int log = 0, original_number=number;
     while (number >>= 1) ++log;
-    for (i = 0; i < log; i++) {
-        pow <<= 1;
-    }
-    return original_number-pow;
+    return original_number - (1 << log);
 }
 
 /**
