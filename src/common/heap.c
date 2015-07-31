@@ -312,12 +312,10 @@ heap_extract_min(struct heap *root)
     root->count--;
     if(root->count == 0){
         root->last_node = root->root_node = NULL;
-        return min_node;
     }
-    if(root->count == 1){
+    else if(root->count == 1){
         root->last_node = root->root_node = new_min;
         new_min->parent = NULL;
-        return min_node;
     }
     else{
         if(new_min->parent->left == new_min){
@@ -339,5 +337,6 @@ heap_extract_min(struct heap *root)
         root->root_node = new_min;
         heap_increse_key(root, new_min);
     }
+    heap_init_node(min_node);
     return min_node;
 }

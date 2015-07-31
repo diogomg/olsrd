@@ -88,6 +88,18 @@ heap_is_empty(struct heap *root)
     return root->count == 0;
 }
 
+/**
+ * @param node pointer to node of the heap
+ * @return true if node is currently in the heap, false otherwise
+ */
+static INLINE bool
+heap_is_node_added(struct heap_node *node)
+{
+    if(!node)
+        return false;
+    return !(node->parent || node->left || node->right);
+}
+
 #define HEAPNODE2STRUCT(funcname, structname, heapnodename) \
 static inline structname * funcname (struct heap_node *ptr)\
 {\
